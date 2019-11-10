@@ -1,0 +1,408 @@
+# -*- python -*-
+import sys
+import os
+import logging
+import argparse
+import time
+from stat import *
+from PyQt5 import QtWidgets, QtGui, QtCore # sudo apt-get install -y python3-pyqt5
+from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtCore import Qt
+import MainWindow
+
+script_dir = os.path.abspath(os.path.dirname(sys.argv[0]))
+
+parser = argparse.ArgumentParser(description='''
+
+Watch processes as they progress through file I/O operations.
+
+''')
+parser.add_argument('--debug', action='store_true',
+                    help='Enable debug logging')
+opts = parser.parse_args()
+del parser
+
+logging.basicConfig(level=logging.DEBUG if opts.debug else logging.INFO,
+                    format='%(name)s: %(levelname)s: %(message)s')
+logger = logging.getLogger(os.path.basename(sys.argv[0]))
+
+# ------------------------------------------------------------------------------
+
+Item = QtWidgets.QTableWidgetItem
+
+g_grey = QtGui.QColor(200, 200, 200)
+g_white = QtGui.QColor(255, 255, 255)
+g_yellow = QtGui.QColor(0xff, 0xff, 0xdd) # light yellow
+
+# How often to check for changed proc files
+g_update_msec = 2000
+
+# After this many periods (g_update_msec), if a given proc file hasn't
+# changed, delete it from the display.
+g_keep_countdown = 300
+
+class File:
+    def __init__(self, name, pos, size, timestamp):
+        self.name = name
+        self.pos = pos
+        self.size = size
+        self.first_pos = pos
+        self.first_size = size
+        self.first_timestamp = timestamp
+        self.table_row = None
+        self.keep_countdown = g_keep_countdown
+
+    def __str__(self):
+        return f'File({self.name},{self.pos},{self.size})'
+
+class Process:
+    def __init__(self, pid, command, files):
+        self.pid = pid          # process identifier (int)
+        self.command = command  # name of the process command (string)
+        self.files = files      # {(fd,dev,ino): File}
+
+    def __str__(self):
+        return f'Process({self.pid},{self.command})'
+
+def get_procs():
+    """
+    Take a snapshot of /proc.
+
+    Returns a list of Process objects.
+    """
+
+    procs = []
+    timestamp = time.time()
+    for pid in os.listdir('.'):
+        if not pid[0].isdigit():
+            continue
+
+        fddir = pid + '/fd/'
+        try:
+            fds = os.listdir(fddir)
+        except OSError as exc:
+            logger.debug('pid %s: skip %s', pid, exc)
+            continue
+
+        try:
+            with open(pid + '/comm') as f:
+                command = f.read().rstrip('\n')
+        except IOError as exc:
+            logger.debug('pid %s: skip %s', pid, exc)
+            continue
+
+        fdmap = {}
+        for fd in fds:
+            try:
+                fdfile = fddir + fd
+                st = os.stat(fdfile)
+
+                if not S_ISREG(st.st_mode) and not S_ISBLK(st.st_mode):
+                    #logger.debug('pid %s, fd %s: not regular or block', pid, fd)
+                    continue
+
+                name = os.readlink(fdfile)
+                logger.debug('pid %s, fd %s: name %r', pid, fd, name)
+
+                size = st.st_size
+                pos = 0
+                with open(pid + '/fdinfo/' + fd, 'rt') as f:
+                    for line in f:
+                        logger.debug('pid %s, fd %s: fdinfo: %r', pid, fd, line)
+                        if line.startswith('pos:'):
+                            pos = int(line[4:])
+                            break
+                logger.debug('pid %s, fd %s: pos %s of %s', pid, fd, pos, size)
+
+                fdmap[fd, st.st_dev, st.st_ino] = \
+                    File(name=name, pos=pos, size=size, timestamp=timestamp)
+
+            except OSError as exc:
+                logger.debug('pid %s, fd %s: skip: %s', pid, fd, exc)
+
+            except IOError as exc:
+                logger.debug('pid %s, fd %s: skip: %s', pid, fd, exc)
+
+        procs.append(Process(pid=pid, command=command, files=fdmap))
+    return procs
+
+def percentage(n, d):
+    """Returns a string like '12.3%' from numerator N and denominator D."""
+    if d == 0:
+        if n == 0:
+            return '0%'
+        return '?'
+    return '{0:.1f}%'.format(100.0 * n / d).replace('.0', '')
+
+def gmk(v):
+    """Returns a string like '4.5G' (Giga, Mega, Kilo) from the value V."""
+    v = float(v)
+    if v > 1.5 * 1024 * 1024 * 1024:
+        r = '{0:.1f}G'.format(v / (1024 * 1024 * 1024))
+    elif v > 1.5 * 1024 * 1024:
+        r = '{0:.1f}M'.format(v / (1024 * 1024))
+    elif v > 1.5 * 1024:
+        r = '{0:.1f}K'.format(v / 1024)
+    else:
+        r = '{0:.1f}'.format(v)
+    return r.replace('.0', '')
+
+# ------------------------------------------------------------------------------
+
+class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
+
+    proc_files = {}             # (pid,command,fd,dev,ino,filename): File
+    last_hilite = set()
+
+    def __init__(self):
+        QtWidgets.QMainWindow.__init__(self)
+        MainWindow.Ui_MainWindow.__init__(self)
+
+        super(ThisAppMainWindow, self).setupUi(self)
+
+        tab = self.mainTable
+
+        self.pushButton_quit.clicked.connect(sys.exit)
+
+        tab.setRowCount(0)
+
+        h = tab.horizontalHeader()
+        col = 0
+
+        # when
+        h.setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeToContents)
+        col += 1
+
+        # position%
+        h.setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeToContents)
+        col += 1
+
+        # position
+        h.setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeToContents)
+        col += 1
+
+        # size
+        h.setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeToContents)
+        col += 1
+
+        # rate
+        h.setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeToContents)
+        col += 1
+
+        # remaining
+        h.setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeToContents)
+        col += 1
+
+        # command
+        h.setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeToContents)
+        col += 1
+
+        # file name
+        h.setSectionResizeMode(col, QtWidgets.QHeaderView.Stretch)
+        col += 1
+
+        self.update_table()
+
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.tick)
+        self.timer.start(g_update_msec)
+
+        self.show()
+
+    def keyPressEvent(self, e):
+        key = e.key()
+        logger.debug(f'keyPressEvent {key} {repr(e)}')
+
+        # If a table cell is selected, unselect it.
+        if key == Qt.Key_Escape:
+            self.mainTable.setCurrentCell(-1, -1)
+
+    def update_row(self, pid, command, fd, proc_file):
+        now = time.time()
+        tab = self.mainTable
+        proc_file.keep_countdown = g_keep_countdown
+
+        row = proc_file.table_row
+        if row is None:
+            # Add the file to the table -- insert at top
+            row = 0
+            tab.insertRow(row)
+            for pf in self.proc_files.values():
+                if pf.table_row is not None:
+                    pf.table_row += 1
+            proc_file.table_row = row
+
+        col = 0
+
+        closed = proc_file.pos is None
+
+        # when
+        i = Item(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now)))
+        i.setTextAlignment(Qt.AlignCenter)
+        if closed:
+            i.setForeground(g_grey)
+        tab.setItem(row, col, i)
+        col += 1
+
+        # position%
+        i = Item('-' if closed
+                 else percentage(proc_file.pos, proc_file.size))
+        i.setTextAlignment(Qt.AlignCenter)
+        if closed:
+            i.setForeground(g_grey)
+        tab.setItem(row, col, i)
+        col += 1
+
+        # position
+        i = Item('-' if closed
+                 else gmk(proc_file.pos))
+        i.setTextAlignment(Qt.AlignCenter)
+        if closed:
+            i.setForeground(g_grey)
+        tab.setItem(row, col, i)
+        col += 1
+
+        # size
+        i = Item(gmk(proc_file.size))
+        i.setTextAlignment(Qt.AlignCenter)
+        if closed:
+            i.setForeground(g_grey)
+        tab.setItem(row, col, i)
+        col += 1
+
+        # rate, remaining
+        rate = '-'
+        more_time = '-'
+        if proc_file.pos is not None:
+            elapsed = now - proc_file.first_timestamp
+            if elapsed != 0:
+                bytes_per_sec = (proc_file.pos - proc_file.first_pos) / elapsed
+                if bytes_per_sec > 0:
+                    rate = gmk(bytes_per_sec) + 'B/s'
+                    more_bytes = proc_file.size - proc_file.pos
+                    if more_bytes > 0:
+                        s = int(more_bytes / bytes_per_sec)
+                        more_time = '{0:d}:{1:02d}'.format(s // 60, s % 60)
+
+        i = Item(rate)
+        i.setTextAlignment(Qt.AlignCenter)
+        if closed:
+            i.setForeground(g_grey)
+        tab.setItem(row, col, i)
+        col += 1
+
+        i = Item(more_time)
+        i.setTextAlignment(Qt.AlignCenter)
+        if closed:
+            i.setForeground(g_grey)
+        tab.setItem(row, col, i)
+        col += 1
+
+        # command
+        i = Item(command)
+        i.setTextAlignment(Qt.AlignCenter)
+        i.setToolTip(f'PID {pid}')
+        if closed:
+            i.setForeground(g_grey)
+        tab.setItem(row, col, i)
+        col += 1
+
+        # file name
+        i = Item(os.path.basename(proc_file.name))
+        i.setToolTip(f'{fd} -> {proc_file.name}')
+        i.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        if closed:
+            i.setForeground(g_grey)
+        tab.setItem(row, col, i)
+        col += 1
+
+    def update_table(self):
+        closed = set(self.proc_files.keys())
+        hilite = set()
+
+        for proc in get_procs():
+            for (fd, dev, ino), new_proc_file in proc.files.items():
+                # TODO: use NamedTuple for `id`
+                id = proc.pid, proc.command, fd, dev, ino, new_proc_file.name
+                closed.discard(id)
+
+                proc_file = self.proc_files.get(id)
+                if not proc_file:
+                    # New file. Add it to proc_files, but we won't add it to
+                    # the table yet -- wait until the position changes.
+                    self.proc_files[id] = new_proc_file
+                    continue
+
+                if proc_file.pos == new_proc_file.pos and \
+                   proc_file.size == new_proc_file.size:
+                    continue
+
+                proc_file.pos = new_proc_file.pos
+                proc_file.size = new_proc_file.size
+
+                self.update_row(proc.pid, proc.command, fd, proc_file)
+                hilite.add(proc_file)
+
+        # Check for files that are now gone (closed)
+        for id in closed:
+            proc_file = self.proc_files[id]
+            if proc_file.table_row is None:
+                del self.proc_files[id]
+                continue
+            if proc_file.pos is None:
+                continue
+            logger.debug('closed:', id, proc_file)
+            proc_file.pos = None
+            pid, command, fd, dev, ino, file_name = id
+            self.update_row(pid, command, fd, proc_file)
+            hilite.add(proc_file)
+
+        # Decrement keep_count for each row and delete the row if the count
+        # reaches zero.
+        for proc_file in self.proc_files.values():
+            row = proc_file.table_row
+            if row is None:
+                continue
+            proc_file.keep_countdown -= 1
+            logger.debug('countdown %s, row %s, file %s',
+                         proc_file.keep_countdown,
+                         proc_file.table_row,
+                         proc_file.name)
+            if proc_file.keep_countdown > 0:
+                continue
+            proc_file.table_row = None
+            self.mainTable.removeRow(row)
+            # Adjust table_row for all rows after this one
+            for pf in self.proc_files.values():
+                if pf.table_row is not None and pf.table_row > row:
+                    pf.table_row -= 1
+
+        # Adjust the row hilighting
+        for proc_file in self.last_hilite - hilite:
+            self.hilite_row(proc_file.table_row, False)
+        for proc_file in hilite:
+            self.hilite_row(proc_file.table_row, True)
+        self.last_hilite = hilite
+
+    def hilite_row(self, row, hilite):
+        tab = self.mainTable
+        color = g_yellow if hilite else g_white
+        for col in range(tab.columnCount()):
+            i = tab.item(row, col)
+            if not i:
+                logger.error('No cell at %s,%s', row, col)
+                continue
+            i.setBackground(color)
+
+    def tick(self):
+        logger.debug('Tick...')
+        self.update_table()
+        logger.debug('Tick...done')
+
+os.chdir('/proc')
+
+app = QtWidgets.QApplication(['QtProgress'])
+app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
+app.setWindowIcon(QtGui.QIcon(os.path.join(script_dir, 'icon.png')))
+ui = ThisAppMainWindow()
+sys.exit(app.exec_())
