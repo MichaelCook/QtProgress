@@ -236,6 +236,20 @@
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout">
         <item>
+         <widget class="QPushButton" name="pushButton_hide">
+          <property name="text">
+           <string>Hide All</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButton_unignore">
+          <property name="text">
+           <string>Unignore</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <spacer name="horizontalSpacer">
           <property name="orientation">
            <enum>Qt::Horizontal</enum>
@@ -270,7 +284,7 @@
      <x>0</x>
      <y>0</y>
      <width>984</width>
-     <height>19</height>
+     <height>22</height>
     </rect>
    </property>
   </widget>

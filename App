@@ -153,6 +153,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
     proc_files = {}             # (pid,command,fd,dev,ino,filename): File
     last_hilite = set()
+    ignored_commands = set()
 
     def __init__(self):
         QtWidgets.QMainWindow.__init__(self)
@@ -160,7 +161,13 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
         super(ThisAppMainWindow, self).setupUi(self)
 
+        self.pushButton_hide.clicked.connect(self.hide_all_rows)
+        self.pushButton_unignore.clicked.connect(self.unignore)
+
         tab = self.mainTable
+
+        tab.setContextMenuPolicy(Qt.CustomContextMenu)
+        tab.customContextMenuRequested.connect(self.show_table_context_menu)
 
         self.pushButton_quit.clicked.connect(sys.exit)
 
@@ -207,7 +214,33 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         self.timer.timeout.connect(self.tick)
         self.timer.start(g_update_msec)
 
+        self.set_hide_button()
+        self.set_unignore_button()
+
         self.show()
+
+    def show_table_context_menu(self, position):
+        item = self.mainTable.itemAt(position)
+        row = item.row()
+        column = item.column()
+        logger.debug(f'at {row},{column}')
+
+        for id, proc_file in self.proc_files.items():
+            if row == proc_file.table_row:
+                break
+        else:
+            logger.error('No row %s', row)
+            return
+        pid, command, fd, dev, info, name = id
+
+        menu = QtWidgets.QMenu()
+        ignoreAction = menu.addAction(f'Ignore: {command}')
+        action = menu.exec_(self.mainTable.mapToGlobal(position))
+        if action == ignoreAction:
+            logger.debug('Ignore: %r', command)
+            self.ignore_command(command)
+        else:
+            logger.debug('Other: %r', action)
 
     def keyPressEvent(self, e):
         key = e.key()
@@ -321,6 +354,9 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         hilite = set()
 
         for proc in get_procs():
+            if proc.command in self.ignored_commands:
+                continue
+
             for (fd, dev, ino), new_proc_file in proc.files.items():
                 # TODO: use NamedTuple for `id`
                 id = proc.pid, proc.command, fd, dev, ino, new_proc_file.name
@@ -358,7 +394,9 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
             hilite.add(proc_file)
 
         # Decrement keep_count for each row and delete the row if the count
-        # reaches zero.
+        # reaches zero.  Don't delete the proc_files entry, though; if later
+        # there's new activity on this proc_file, we'll re-add the row and
+        # pick up where we left off.
         for proc_file in self.proc_files.values():
             row = proc_file.table_row
             if row is None:
@@ -371,11 +409,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
             if proc_file.keep_countdown > 0:
                 continue
             proc_file.table_row = None
-            self.mainTable.removeRow(row)
-            # Adjust table_row for all rows after this one
-            for pf in self.proc_files.values():
-                if pf.table_row is not None and pf.table_row > row:
-                    pf.table_row -= 1
+            self.remove_row(row)
 
         # Adjust the row hilighting
         for proc_file in self.last_hilite - hilite:
@@ -384,7 +418,18 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
             self.hilite_row(proc_file.table_row, True)
         self.last_hilite = hilite
 
+        self.set_hide_button()
+
+    def remove_row(self, row):
+        self.mainTable.removeRow(row)
+        # Adjust table_row for all rows after this one
+        for pf in self.proc_files.values():
+            if pf.table_row is not None and pf.table_row > row:
+                pf.table_row -= 1
+
     def hilite_row(self, row, hilite):
+        if row is None:
+            return
         tab = self.mainTable
         color = g_yellow if hilite else g_white
         for col in range(tab.columnCount()):
@@ -398,6 +443,47 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         logger.debug('Tick...')
         self.update_table()
         logger.debug('Tick...done')
+
+    def hide_all_rows(self):
+        """
+        Hide all rows.  If there's any activity later, the rows will reappear
+        """
+        self.mainTable.setRowCount(0)
+        self.last_hilite = set()
+        for proc_file in self.proc_files.values():
+            proc_file.table_row = None
+        self.set_hide_button()
+
+    def ignore_command(self, command_to_ignore):
+        self.ignored_commands.add(command_to_ignore)
+        for id, proc_file in self.proc_files.items():
+            if proc_file.table_row is None:
+                continue
+            pid, command, fd, dev, info, name = id
+            if command != command_to_ignore:
+                continue
+
+            row = proc_file.table_row
+            proc_file.table_row = None
+            self.remove_row(row)
+        self.set_unignore_button()
+
+    def unignore(self):
+        self.ignored_commands = set()
+        self.set_unignore_button()
+
+    def set_hide_button(self):
+        self.pushButton_hide.setEnabled(self.mainTable.rowCount() != 0)
+
+    def set_unignore_button(self):
+        but = self.pushButton_unignore
+        if self.ignored_commands:
+            but.setEnabled(True)
+            but.setToolTip('\n'.join(sorted(self.ignored_commands,
+                                            key=lambda x: x.lower())))
+        else:
+            but.setEnabled(False)
+            but.setToolTip(None)
 
 os.chdir('/proc')
 

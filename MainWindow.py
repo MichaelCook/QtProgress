@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'MainWindow.ui'
 #
-# Created by: PyQt5 UI code generator 5.13.1
+# Created by: PyQt5 UI code generator 5.12.3
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -119,6 +119,12 @@ class Ui_MainWindow(object):
         self.verticalLayout.addWidget(self.mainTable)
         self.horizontalLayout = QtWidgets.QHBoxLayout()
         self.horizontalLayout.setObjectName("horizontalLayout")
+        self.pushButton_hide = QtWidgets.QPushButton(self.centralwidget)
+        self.pushButton_hide.setObjectName("pushButton_hide")
+        self.horizontalLayout.addWidget(self.pushButton_hide)
+        self.pushButton_unignore = QtWidgets.QPushButton(self.centralwidget)
+        self.pushButton_unignore.setObjectName("pushButton_unignore")
+        self.horizontalLayout.addWidget(self.pushButton_unignore)
         spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout.addItem(spacerItem)
         self.pushButton_quit = QtWidgets.QPushButton(self.centralwidget)
@@ -128,7 +134,7 @@ class Ui_MainWindow(object):
         self.gridLayout.addLayout(self.verticalLayout, 0, 0, 1, 1)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 984, 19))
+        self.menubar.setGeometry(QtCore.QRect(0, 0, 984, 22))
         self.menubar.setObjectName("menubar")
         MainWindow.setMenuBar(self.menubar)
 
@@ -157,6 +163,8 @@ class Ui_MainWindow(object):
         __sortingEnabled = self.mainTable.isSortingEnabled()
         self.mainTable.setSortingEnabled(False)
         self.mainTable.setSortingEnabled(__sortingEnabled)
+        self.pushButton_hide.setText(_translate("MainWindow", "Hide All"))
+        self.pushButton_unignore.setText(_translate("MainWindow", "Unignore"))
         self.pushButton_quit.setText(_translate("MainWindow", "Quit"))
         self.pushButton_quit.setShortcut(_translate("MainWindow", "Ctrl+Q"))
 
