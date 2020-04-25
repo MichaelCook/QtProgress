@@ -272,7 +272,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
         # when
         i = Item(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now)))
-        i.setTextAlignment(Qt.AlignCenter)
+        i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
             i.setForeground(g_grey)
         tab.setItem(row, col, i)
@@ -281,7 +281,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         # position%
         i = Item('-' if closed
                  else percentage(proc_file.pos, proc_file.size))
-        i.setTextAlignment(Qt.AlignCenter)
+        i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
             i.setForeground(g_grey)
         tab.setItem(row, col, i)
@@ -290,7 +290,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         # position
         i = Item('-' if closed
                  else gmk(proc_file.pos))
-        i.setTextAlignment(Qt.AlignCenter)
+        i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
             i.setForeground(g_grey)
         tab.setItem(row, col, i)
@@ -298,7 +298,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
         # size
         i = Item(gmk(proc_file.size))
-        i.setTextAlignment(Qt.AlignCenter)
+        i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
             i.setForeground(g_grey)
         tab.setItem(row, col, i)
@@ -319,14 +319,14 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
                         more_time = '{0:d}:{1:02d}'.format(s // 60, s % 60)
 
         i = Item(rate)
-        i.setTextAlignment(Qt.AlignCenter)
+        i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
             i.setForeground(g_grey)
         tab.setItem(row, col, i)
         col += 1
 
         i = Item(more_time)
-        i.setTextAlignment(Qt.AlignCenter)
+        i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
             i.setForeground(g_grey)
         tab.setItem(row, col, i)
@@ -334,7 +334,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
         # command
         i = Item(command)
-        i.setTextAlignment(Qt.AlignCenter)
+        i.setTextAlignment(int(Qt.AlignCenter))
         i.setToolTip(f'PID {pid}')
         if closed:
             i.setForeground(g_grey)
@@ -344,7 +344,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         # file name
         i = Item(os.path.basename(proc_file.name))
         i.setToolTip(f'{fd} -> {proc_file.name}')
-        i.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        i.setTextAlignment(int(Qt.AlignLeft | Qt.AlignVCenter))
         if closed:
             i.setForeground(g_grey)
         tab.setItem(row, col, i)
