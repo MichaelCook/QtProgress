@@ -224,7 +224,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         item = self.mainTable.itemAt(position)
         row = item.row()
         column = item.column()
-        logger.debug(f'at {row},{column}')
+        logger.debug(f'at %s,%s', row, column)
 
         for id, proc_file in self.proc_files.items():
             if row == proc_file.table_row:
@@ -245,7 +245,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
     def keyPressEvent(self, e):
         key = e.key()
-        logger.debug(f'keyPressEvent {key} {repr(e)}')
+        logger.debug('keyPressEvent %s %r', key, e)
 
         # If a table cell is selected, unselect it.
         if key == Qt.Key_Escape:
