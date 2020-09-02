@@ -5,42 +5,41 @@ import os
 import logging
 import argparse
 import time
-from stat import *
+from stat import S_ISREG, S_ISBLK
 from PyQt5 import QtWidgets, QtGui, QtCore # sudo apt-get install -y python3-pyqt5
-from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import Qt
 import MainWindow
+from mcook import gmk
 
-script_dir = os.path.abspath(os.path.dirname(sys.argv[0]))
+SCRIPT_DIR = os.path.abspath(os.path.dirname(sys.argv[0]))
 
-parser = argparse.ArgumentParser(description='''
+parser = argparse.ArgumentParser(description="""
 
 Watch processes as they progress through file I/O operations.
 
-''')
-parser.add_argument('--debug', action='store_true',
-                    help='Enable debug logging')
-opts = parser.parse_args()
+""")
+parser.add_argument('--debug', action='store_true')
+OPTS = parser.parse_args()
 del parser
 
-logging.basicConfig(level=logging.DEBUG if opts.debug else logging.INFO,
+logging.basicConfig(level=logging.DEBUG if OPTS.debug else logging.INFO,
                     format='%(name)s: %(levelname)s: %(message)s')
-logger = logging.getLogger(os.path.basename(sys.argv[0]))
+LOGGER = logging.getLogger(os.path.basename(sys.argv[0]))
 
 # ------------------------------------------------------------------------------
 
 Item = QtWidgets.QTableWidgetItem
 
-g_grey = QtGui.QColor(200, 200, 200)
-g_white = QtGui.QColor(255, 255, 255)
-g_yellow = QtGui.QColor(0xff, 0xff, 0xdd) # light yellow
+GREY = QtGui.QColor(200, 200, 200)
+WHITE = QtGui.QColor(255, 255, 255)
+YELLOW = QtGui.QColor(0xff, 0xff, 0xdd) # light yellow
 
 # How often to check for changed proc files
-g_update_msec = 2000
+UPDATE_MSEC = 2000
 
-# After this many periods (g_update_msec), if a given proc file hasn't
+# After this many periods (UPDATE_MSEC), if a given proc file hasn't
 # changed, delete it from the display.
-g_keep_countdown = 300
+KEEP_COUNTDOWN = 300
 
 class File:
     def __init__(self, name, pos, size, timestamp):
@@ -51,7 +50,7 @@ class File:
         self.first_size = size
         self.first_timestamp = timestamp
         self.table_row = None
-        self.keep_countdown = g_keep_countdown
+        self.keep_countdown = KEEP_COUNTDOWN
 
     def __str__(self):
         return f'File({self.name},{self.pos},{self.size})'
@@ -82,14 +81,14 @@ def get_procs():
         try:
             fds = os.listdir(fddir)
         except OSError as exc:
-            logger.debug('pid %s: skip %s', pid, exc)
+            LOGGER.debug('pid %s: skip %s', pid, exc)
             continue
 
         try:
             with open(pid + '/comm') as f:
                 command = f.read().rstrip('\n')
         except IOError as exc:
-            logger.debug('pid %s: skip %s', pid, exc)
+            LOGGER.debug('pid %s: skip %s', pid, exc)
             continue
 
         fdmap = {}
@@ -99,54 +98,40 @@ def get_procs():
                 st = os.stat(fdfile)
 
                 if not S_ISREG(st.st_mode) and not S_ISBLK(st.st_mode):
-                    #logger.debug('pid %s, fd %s: not regular or block', pid, fd)
+                    #LOGGER.debug('pid %s, fd %s: not regular or block', pid, fd)
                     continue
 
                 name = os.readlink(fdfile)
-                logger.debug('pid %s, fd %s: name %r', pid, fd, name)
+                LOGGER.debug('pid %s, fd %s: name %r', pid, fd, name)
 
                 size = st.st_size
                 pos = 0
                 with open(pid + '/fdinfo/' + fd, 'rt') as f:
                     for line in f:
-                        logger.debug('pid %s, fd %s: fdinfo: %r', pid, fd, line)
+                        LOGGER.debug('pid %s, fd %s: fdinfo: %r', pid, fd, line)
                         if line.startswith('pos:'):
                             pos = int(line[4:])
                             break
-                logger.debug('pid %s, fd %s: pos %s of %s', pid, fd, pos, size)
+                LOGGER.debug('pid %s, fd %s: pos %s of %s', pid, fd, pos, size)
 
                 fdmap[fd, st.st_dev, st.st_ino] = \
                     File(name=name, pos=pos, size=size, timestamp=timestamp)
 
             except OSError as exc:
-                logger.debug('pid %s, fd %s: skip: %s', pid, fd, exc)
-
-            except IOError as exc:
-                logger.debug('pid %s, fd %s: skip: %s', pid, fd, exc)
+                LOGGER.debug('pid %s, fd %s: skip: %s', pid, fd, exc)
 
         procs.append(Process(pid=pid, command=command, files=fdmap))
     return procs
 
 def percentage(n, d):
-    """Returns a string like '12.3%' from numerator N and denominator D."""
+    """
+    Returns a string like '12.3%' from numerator N and denominator D
+    """
     if d == 0:
         if n == 0:
             return '0%'
         return '?'
     return '{0:.1f}%'.format(100.0 * n / d).replace('.0', '')
-
-def gmk(v):
-    """Returns a string like '4.5G' (Giga, Mega, Kilo) from the value V."""
-    v = float(v)
-    if v > 1.5 * 1024 * 1024 * 1024:
-        r = '{0:.1f}G'.format(v / (1024 * 1024 * 1024))
-    elif v > 1.5 * 1024 * 1024:
-        r = '{0:.1f}M'.format(v / (1024 * 1024))
-    elif v > 1.5 * 1024:
-        r = '{0:.1f}K'.format(v / 1024)
-    else:
-        r = '{0:.1f}'.format(v)
-    return r.replace('.0', '')
 
 # ------------------------------------------------------------------------------
 
@@ -213,7 +198,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.tick)
-        self.timer.start(g_update_msec)
+        self.timer.start(UPDATE_MSEC)
 
         self.set_hide_button()
         self.set_unignore_button()
@@ -224,28 +209,28 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         item = self.mainTable.itemAt(position)
         row = item.row()
         column = item.column()
-        logger.debug(f'at %s,%s', row, column)
+        LOGGER.debug('at %s,%s', row, column)
 
-        for id, proc_file in self.proc_files.items():
+        for it, proc_file in self.proc_files.items():
             if row == proc_file.table_row:
+                command = it[1]
                 break
         else:
-            logger.error('No row %s', row)
+            LOGGER.error('No row %s', row)
             return
-        pid, command, fd, dev, info, name = id
 
         menu = QtWidgets.QMenu()
         ignoreAction = menu.addAction(f'Ignore: {command}')
         action = menu.exec_(self.mainTable.mapToGlobal(position))
         if action == ignoreAction:
-            logger.debug('Ignore: %r', command)
+            LOGGER.debug('Ignore: %r', command)
             self.ignore_command(command)
         else:
-            logger.debug('Other: %r', action)
+            LOGGER.debug('Other: %r', action)
 
     def keyPressEvent(self, e):
         key = e.key()
-        logger.debug('keyPressEvent %s %r', key, e)
+        LOGGER.debug('keyPressEvent %s %r', key, e)
 
         # If a table cell is selected, unselect it.
         if key == Qt.Key_Escape:
@@ -254,7 +239,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
     def update_row(self, pid, command, fd, proc_file):
         now = time.time()
         tab = self.mainTable
-        proc_file.keep_countdown = g_keep_countdown
+        proc_file.keep_countdown = KEEP_COUNTDOWN
 
         row = proc_file.table_row
         if row is None:
@@ -274,7 +259,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         i = Item(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now)))
         i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
-            i.setForeground(g_grey)
+            i.setForeground(GREY)
         tab.setItem(row, col, i)
         col += 1
 
@@ -283,7 +268,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
                  else percentage(proc_file.pos, proc_file.size))
         i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
-            i.setForeground(g_grey)
+            i.setForeground(GREY)
         tab.setItem(row, col, i)
         col += 1
 
@@ -292,7 +277,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
                  else gmk(proc_file.pos))
         i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
-            i.setForeground(g_grey)
+            i.setForeground(GREY)
         tab.setItem(row, col, i)
         col += 1
 
@@ -300,7 +285,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         i = Item(gmk(proc_file.size))
         i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
-            i.setForeground(g_grey)
+            i.setForeground(GREY)
         tab.setItem(row, col, i)
         col += 1
 
@@ -321,14 +306,14 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         i = Item(rate)
         i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
-            i.setForeground(g_grey)
+            i.setForeground(GREY)
         tab.setItem(row, col, i)
         col += 1
 
         i = Item(more_time)
         i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
-            i.setForeground(g_grey)
+            i.setForeground(GREY)
         tab.setItem(row, col, i)
         col += 1
 
@@ -337,7 +322,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         i.setTextAlignment(int(Qt.AlignCenter))
         i.setToolTip(f'PID {pid}')
         if closed:
-            i.setForeground(g_grey)
+            i.setForeground(GREY)
         tab.setItem(row, col, i)
         col += 1
 
@@ -346,7 +331,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         i.setToolTip(f'{fd} -> {proc_file.name}')
         i.setTextAlignment(int(Qt.AlignLeft | Qt.AlignVCenter))
         if closed:
-            i.setForeground(g_grey)
+            i.setForeground(GREY)
         tab.setItem(row, col, i)
         col += 1
 
@@ -359,15 +344,14 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
                 continue
 
             for (fd, dev, ino), new_proc_file in proc.files.items():
-                # TODO: use NamedTuple for `id`
-                id = proc.pid, proc.command, fd, dev, ino, new_proc_file.name
-                closed.discard(id)
+                it = proc.pid, proc.command, fd, dev, ino, new_proc_file.name
+                closed.discard(it)
 
-                proc_file = self.proc_files.get(id)
+                proc_file = self.proc_files.get(it)
                 if not proc_file:
                     # New file. Add it to proc_files, but we won't add it to
                     # the table yet -- wait until the position changes.
-                    self.proc_files[id] = new_proc_file
+                    self.proc_files[it] = new_proc_file
                     continue
 
                 if proc_file.pos == new_proc_file.pos and \
@@ -381,16 +365,16 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
                 hilite.add(proc_file)
 
         # Check for files that are now gone (closed)
-        for id in closed:
-            proc_file = self.proc_files[id]
+        for it in closed:
+            proc_file = self.proc_files[it]
             if proc_file.table_row is None:
-                del self.proc_files[id]
+                del self.proc_files[it]
                 continue
             if proc_file.pos is None:
                 continue
-            logger.debug('closed:', id, proc_file)
+            LOGGER.debug('closed: %s %s', it, proc_file)
             proc_file.pos = None
-            pid, command, fd, dev, ino, file_name = id
+            pid, command, fd, dev, ino, _file_name = it
             self.update_row(pid, command, fd, proc_file)
             hilite.add(proc_file)
 
@@ -403,7 +387,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
             if row is None:
                 continue
             proc_file.keep_countdown -= 1
-            logger.debug('countdown %s, row %s, file %s',
+            LOGGER.debug('countdown %s, row %s, file %s',
                          proc_file.keep_countdown,
                          proc_file.table_row,
                          proc_file.name)
@@ -432,18 +416,18 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         if row is None:
             return
         tab = self.mainTable
-        color = g_yellow if hilite else g_white
+        color = YELLOW if hilite else WHITE
         for col in range(tab.columnCount()):
             i = tab.item(row, col)
             if not i:
-                logger.error('No cell at %s,%s', row, col)
+                LOGGER.error('No cell at %s,%s', row, col)
                 continue
             i.setBackground(color)
 
     def tick(self):
-        logger.debug('Tick...')
+        LOGGER.debug('Tick...')
         self.update_table()
-        logger.debug('Tick...done')
+        LOGGER.debug('Tick...done')
 
     def hide_all_rows(self):
         """
@@ -457,10 +441,10 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
     def ignore_command(self, command_to_ignore):
         self.ignored_commands.add(command_to_ignore)
-        for id, proc_file in self.proc_files.items():
+        for it, proc_file in self.proc_files.items():
             if proc_file.table_row is None:
                 continue
-            pid, command, fd, dev, info, name = id
+            _pid, command, _fd, _dev, _info, _name = it
             if command != command_to_ignore:
                 continue
 
@@ -490,6 +474,6 @@ os.chdir('/proc')
 
 app = QtWidgets.QApplication(['QtProgress'])
 app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
-app.setWindowIcon(QtGui.QIcon(os.path.join(script_dir, 'icon.png')))
+app.setWindowIcon(QtGui.QIcon(os.path.join(SCRIPT_DIR, 'icon.png')))
 ui = ThisAppMainWindow()
 sys.exit(app.exec_())
