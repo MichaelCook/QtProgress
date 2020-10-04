@@ -18,13 +18,18 @@ parser = argparse.ArgumentParser(description="""
 Watch processes as they progress through file I/O operations.
 
 """)
+parser.add_argument('--ignore', '-i', action='append', default=[], help="""
+Comma-separated list of commands to ignore
+""")
 parser.add_argument('--debug', action='store_true')
 OPTS = parser.parse_args()
 del parser
 
 logging.basicConfig(level=logging.DEBUG if OPTS.debug else logging.INFO,
                     format='%(name)s: %(levelname)s: %(message)s')
-LOGGER = logging.getLogger(os.path.basename(sys.argv[0]))
+LOGGER = logging.getLogger('QtProgress')
+
+IGNORED_COMMANDS = set(','.join(OPTS.ignore).split(','))
 
 # ------------------------------------------------------------------------------
 
@@ -39,7 +44,7 @@ UPDATE_MSEC = 2000
 
 # After this many periods (UPDATE_MSEC), if a given proc file hasn't
 # changed, delete it from the display.
-KEEP_COUNTDOWN = 300
+KEEP_COUNTDOWN = 120
 
 class File:
     def __init__(self, name, pos, size, timestamp):
@@ -139,7 +144,6 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
     proc_files = {}             # (pid,command,fd,dev,ino,filename): File
     last_hilite = set()
-    ignored_commands = set()
 
     def __init__(self):
         QtWidgets.QMainWindow.__init__(self)
@@ -340,7 +344,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         hilite = set()
 
         for proc in get_procs():
-            if proc.command in self.ignored_commands:
+            if proc.command in IGNORED_COMMANDS:
                 continue
 
             for (fd, dev, ino), new_proc_file in proc.files.items():
@@ -404,6 +408,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         self.last_hilite = hilite
 
         self.set_hide_button()
+        self.mainTable.setCurrentCell(-1, -1)
 
     def remove_row(self, row):
         self.mainTable.removeRow(row)
@@ -440,7 +445,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         self.set_hide_button()
 
     def ignore_command(self, command_to_ignore):
-        self.ignored_commands.add(command_to_ignore)
+        IGNORED_COMMANDS.add(command_to_ignore)
         for it, proc_file in self.proc_files.items():
             if proc_file.table_row is None:
                 continue
@@ -454,7 +459,8 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         self.set_unignore_button()
 
     def unignore(self):
-        self.ignored_commands = set()
+        global IGNORED_COMMANDS
+        IGNORED_COMMANDS = set()
         self.set_unignore_button()
 
     def set_hide_button(self):
@@ -462,18 +468,21 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
     def set_unignore_button(self):
         but = self.pushButton_unignore
-        if self.ignored_commands:
+        if IGNORED_COMMANDS:
             but.setEnabled(True)
-            but.setToolTip('\n'.join(sorted(self.ignored_commands,
+            but.setToolTip('\n'.join(sorted(IGNORED_COMMANDS,
                                             key=lambda x: x.lower())))
         else:
             but.setEnabled(False)
             but.setToolTip(None)
 
-os.chdir('/proc')
+def main():
+    os.chdir('/proc')
 
-app = QtWidgets.QApplication(['QtProgress'])
-app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
-app.setWindowIcon(QtGui.QIcon(os.path.join(SCRIPT_DIR, 'icon.png')))
-ui = ThisAppMainWindow()
-sys.exit(app.exec_())
+    app = QtWidgets.QApplication(['QtProgress'])
+    app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
+    app.setWindowIcon(QtGui.QIcon(os.path.join(SCRIPT_DIR, 'icon.png')))
+    _ui = ThisAppMainWindow()
+    sys.exit(app.exec_())
+
+main()
