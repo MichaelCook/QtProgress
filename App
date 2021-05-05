@@ -5,11 +5,12 @@ import os
 import logging
 import argparse
 import time
+from typing import Tuple, Dict, List, Set, Optional
 from stat import S_ISREG, S_ISBLK
-from PyQt5 import QtWidgets, QtGui, QtCore # sudo apt-get install -y python3-pyqt5
-from PyQt5.QtCore import Qt
-import MainWindow
+from PyQt5 import QtWidgets, QtGui, QtCore   # type: ignore
+from PyQt5.QtCore import Qt                  # type: ignore
 from mcook import gmk
+import MainWindow
 
 SCRIPT_DIR = os.path.abspath(os.path.dirname(sys.argv[0]))
 
@@ -47,29 +48,35 @@ UPDATE_MSEC = 2000
 KEEP_COUNTDOWN = 120
 
 class File:
-    def __init__(self, name, pos, size, timestamp):
+    def __init__(self, name: str, pos: int, size: int, timestamp: float) -> None:
         self.name = name
-        self.pos = pos
+        self.pos: Optional[int] = pos
         self.size = size
         self.first_pos = pos
         self.first_size = size
         self.first_timestamp = timestamp
-        self.table_row = None
+        self.table_row: Optional[int] = None
         self.keep_countdown = KEEP_COUNTDOWN
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f'File({self.name},{self.pos},{self.size})'
 
+FdDevIno = Tuple[int, int, int]
+Files = Dict[FdDevIno, File]
+FileSet = Set[File]
+
 class Process:
-    def __init__(self, pid, command, files):
-        self.pid = pid          # process identifier (int)
-        self.command = command  # name of the process command (string)
-        self.files = files      # {(fd,dev,ino): File}
+    def __init__(self, pid: int, command: str, files: Files):
+        self.pid = pid          # process identifier
+        self.command = command  # name of the process command
+        self.files = files
 
     def __str__(self):
         return f'Process({self.pid},{self.command})'
 
-def get_procs():
+Processes = List[Process]
+
+def get_procs() -> Processes:
     """
     Take a snapshot of /proc.
 
@@ -119,19 +126,21 @@ def get_procs():
                             break
                 LOGGER.debug('pid %s, fd %s: pos %s of %s', pid, fd, pos, size)
 
-                fdmap[fd, st.st_dev, st.st_ino] = \
+                fdmap[int(fd), st.st_dev, st.st_ino] = \
                     File(name=name, pos=pos, size=size, timestamp=timestamp)
 
             except OSError as exc:
                 LOGGER.debug('pid %s, fd %s: skip: %s', pid, fd, exc)
 
-        procs.append(Process(pid=pid, command=command, files=fdmap))
+        procs.append(Process(pid=int(pid), command=command, files=fdmap))
     return procs
 
-def percentage(n, d):
+def percentage(n: Optional[int], d: int) -> str:
     """
     Returns a string like '12.3%' from numerator N and denominator D
     """
+    if n is None:
+        return '?'
     if d == 0:
         if n == 0:
             return '0%'
@@ -140,16 +149,18 @@ def percentage(n, d):
 
 # ------------------------------------------------------------------------------
 
+PidCommandFdDevInoName = Tuple[int, str, int, int, int, str]
+
 class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
-    proc_files = {}             # (pid,command,fd,dev,ino,filename): File
-    last_hilite = set()
+    proc_files: Dict[PidCommandFdDevInoName, File] = {}
+    last_hilite: FileSet = set()
 
-    def __init__(self):
+    def __init__(self) -> None:
         QtWidgets.QMainWindow.__init__(self)
         MainWindow.Ui_MainWindow.__init__(self)
 
-        super(ThisAppMainWindow, self).setupUi(self)
+        super().setupUi(self)
 
         self.pushButton_hide.clicked.connect(self.hide_all_rows)
         self.pushButton_unignore.clicked.connect(self.unignore)
@@ -209,7 +220,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
         self.show()
 
-    def show_table_context_menu(self, position):
+    def show_table_context_menu(self, position: int) -> None:
         item = self.mainTable.itemAt(position)
         row = item.row()
         column = item.column()
@@ -232,7 +243,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         else:
             LOGGER.debug('Other: %r', action)
 
-    def keyPressEvent(self, e):
+    def keyPressEvent(self, e: QtGui.QKeyEvent) -> None:
         key = e.key()
         LOGGER.debug('keyPressEvent %s %r', key, e)
 
@@ -240,7 +251,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         if key == Qt.Key_Escape:
             self.mainTable.setCurrentCell(-1, -1)
 
-    def update_row(self, pid, command, fd, proc_file):
+    def update_row(self, pid: int, command: str, fd: int, proc_file: File) -> None:
         now = time.time()
         tab = self.mainTable
         proc_file.keep_countdown = KEEP_COUNTDOWN
@@ -277,7 +288,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         col += 1
 
         # position
-        i = Item('-' if closed
+        i = Item('-' if closed or proc_file.pos is None
                  else gmk(proc_file.pos))
         i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
@@ -339,9 +350,9 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         tab.setItem(row, col, i)
         col += 1
 
-    def update_table(self):
+    def update_table(self) -> None:
         closed = set(self.proc_files.keys())
-        hilite = set()
+        hilite: FileSet = set()
 
         for proc in get_procs():
             if proc.command in IGNORED_COMMANDS:
@@ -410,14 +421,14 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         self.set_hide_button()
         self.mainTable.setCurrentCell(-1, -1)
 
-    def remove_row(self, row):
+    def remove_row(self, row: int) -> None:
         self.mainTable.removeRow(row)
         # Adjust table_row for all rows after this one
         for pf in self.proc_files.values():
             if pf.table_row is not None and pf.table_row > row:
                 pf.table_row -= 1
 
-    def hilite_row(self, row, hilite):
+    def hilite_row(self, row: Optional[int], hilite: bool) -> None:
         if row is None:
             return
         tab = self.mainTable
@@ -429,12 +440,12 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
                 continue
             i.setBackground(color)
 
-    def tick(self):
+    def tick(self) -> None:
         LOGGER.debug('Tick...')
         self.update_table()
         LOGGER.debug('Tick...done')
 
-    def hide_all_rows(self):
+    def hide_all_rows(self) -> None:
         """
         Hide all rows.  If there's any activity later, the rows will reappear
         """
@@ -444,7 +455,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
             proc_file.table_row = None
         self.set_hide_button()
 
-    def ignore_command(self, command_to_ignore):
+    def ignore_command(self, command_to_ignore: str) -> None:
         IGNORED_COMMANDS.add(command_to_ignore)
         for it, proc_file in self.proc_files.items():
             if proc_file.table_row is None:
@@ -458,15 +469,15 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
             self.remove_row(row)
         self.set_unignore_button()
 
-    def unignore(self):
+    def unignore(self) -> None:
         global IGNORED_COMMANDS
         IGNORED_COMMANDS = set()
         self.set_unignore_button()
 
-    def set_hide_button(self):
+    def set_hide_button(self) -> None:
         self.pushButton_hide.setEnabled(self.mainTable.rowCount() != 0)
 
-    def set_unignore_button(self):
+    def set_unignore_button(self) -> None:
         but = self.pushButton_unignore
         if IGNORED_COMMANDS:
             but.setEnabled(True)
@@ -476,7 +487,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
             but.setEnabled(False)
             but.setToolTip(None)
 
-def main():
+def main() -> None:
     os.chdir('/proc')
 
     app = QtWidgets.QApplication(['QtProgress'])
