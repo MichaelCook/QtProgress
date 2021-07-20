@@ -7,8 +7,8 @@ import argparse
 import time
 from typing import Tuple, Dict, List, Set, Optional
 from stat import S_ISREG, S_ISBLK
-from PyQt5 import QtWidgets, QtGui, QtCore   # type: ignore
-from PyQt5.QtCore import Qt                  # type: ignore
+from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5.QtCore import Qt
 from mcook import gmk
 import MainWindow
 
@@ -491,7 +491,7 @@ def main() -> None:
     os.chdir('/proc')
 
     app = QtWidgets.QApplication(['QtProgress'])
-    app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
+    app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))  # type: ignore
     app.setWindowIcon(QtGui.QIcon(os.path.join(SCRIPT_DIR, 'icon.png')))
     _ui = ThisAppMainWindow()
     sys.exit(app.exec_())
