@@ -1,4 +1,3 @@
-# -*- python -*-
 # Copyright 2019 (c) Michael Cook <michael@waxrat.com>. All rights reserved.
 import sys
 import os
