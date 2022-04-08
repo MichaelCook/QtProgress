@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 
 class Ui_MainWindow(object):
-    def setupUi(self, MainWindow):
+    def setupUi(self, MainWindow: QtWidgets.QMainWindow) -> None:
         MainWindow.setObjectName("MainWindow")
         MainWindow.resize(984, 843)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
@@ -141,7 +141,7 @@ class Ui_MainWindow(object):
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
-    def retranslateUi(self, MainWindow):
+    def retranslateUi(self, MainWindow: QtWidgets.QMainWindow) -> None:
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "QtProgress"))
         item = self.mainTable.horizontalHeaderItem(0)

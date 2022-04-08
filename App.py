@@ -7,11 +7,16 @@ import time
 from typing import Tuple, Dict, List, Set, Optional
 from stat import S_ISREG, S_ISBLK
 from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QPoint
 from mcook import gmk
 import MainWindow
+try:
+    from typing import Final
+except ImportError:
+    from typing import Any
+    Final = Any                 # type: ignore
 
-SCRIPT_DIR = os.path.abspath(os.path.dirname(sys.argv[0]))
+SCRIPT_DIR: Final = os.path.abspath(os.path.dirname(sys.argv[0]))
 
 parser = argparse.ArgumentParser(description="""
 
@@ -27,24 +32,24 @@ del parser
 
 logging.basicConfig(level=logging.DEBUG if OPTS.debug else logging.INFO,
                     format='%(name)s: %(levelname)s: %(message)s')
-LOGGER = logging.getLogger('QtProgress')
+LOGGER: Final = logging.getLogger('QtProgress')
 
 IGNORED_COMMANDS = set(','.join(OPTS.ignore).split(','))
 
 # ------------------------------------------------------------------------------
 
-Item = QtWidgets.QTableWidgetItem
+Item: Final = QtWidgets.QTableWidgetItem
 
-GREY = QtGui.QColor(200, 200, 200)
-WHITE = QtGui.QColor(255, 255, 255)
-YELLOW = QtGui.QColor(0xff, 0xff, 0xdd) # light yellow
+GREY: Final = QtGui.QColor(200, 200, 200)
+WHITE: Final = QtGui.QColor(255, 255, 255)
+YELLOW: Final = QtGui.QColor(0xff, 0xff, 0xdd)  # light yellow
 
 # How often to check for changed proc files
-UPDATE_MSEC = 2000
+UPDATE_MSEC: Final = 2000
 
 # After this many periods (UPDATE_MSEC), if a given proc file hasn't
 # changed, delete it from the display.
-KEEP_COUNTDOWN = 120
+KEEP_COUNTDOWN: Final = 120
 
 class File:
     def __init__(self, name: str, pos: int, size: int, timestamp: float) -> None:
@@ -65,12 +70,12 @@ Files = Dict[FdDevIno, File]
 FileSet = Set[File]
 
 class Process:
-    def __init__(self, pid: int, command: str, files: Files):
+    def __init__(self, pid: int, command: str, files: Files) -> None:
         self.pid = pid          # process identifier
         self.command = command  # name of the process command
         self.files = files
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f'Process({self.pid},{self.command})'
 
 Processes = List[Process]
@@ -109,7 +114,7 @@ def get_procs() -> Processes:
                 st = os.stat(fdfile)
 
                 if not S_ISREG(st.st_mode) and not S_ISBLK(st.st_mode):
-                    #LOGGER.debug('pid %s, fd %s: not regular or block', pid, fd)
+                    # LOGGER.debug('pid %s, fd %s: not regular or block', pid, fd)
                     continue
 
                 name = os.readlink(fdfile)
@@ -219,8 +224,11 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
         self.show()
 
-    def show_table_context_menu(self, position: int) -> None:
+    def show_table_context_menu(self, position: QPoint) -> None:
         item = self.mainTable.itemAt(position)
+        if item is None:
+            return
+
         row = item.row()
         column = item.column()
         LOGGER.debug('at %s,%s', row, column)
@@ -484,7 +492,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
                                             key=lambda x: x.lower())))
         else:
             but.setEnabled(False)
-            but.setToolTip(None)
+            but.setToolTip('')
 
 def main() -> None:
     os.chdir('/proc')
@@ -492,7 +500,7 @@ def main() -> None:
     app = QtWidgets.QApplication(['QtProgress'])
     app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))  # type: ignore
     app.setWindowIcon(QtGui.QIcon(os.path.join(SCRIPT_DIR, 'icon.png')))
-    _ui = ThisAppMainWindow()
+    _ui = ThisAppMainWindow()   # noqa: F841 local variable assigned to but never used
     sys.exit(app.exec_())
 
 main()
