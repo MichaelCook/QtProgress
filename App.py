@@ -1,42 +1,25 @@
 # Copyright 2019 (c) Michael Cook <michael@waxrat.com>. All rights reserved.
+# pylint: disable=deprecated-typing-alias disable=consider-alternative-union-syntax
 import sys
 import os
 import logging
-import argparse
 import time
-from typing import Tuple, Dict, List, Set, Optional
+from typing import Set, Tuple, Dict, List, Optional
 from stat import S_ISREG, S_ISBLK
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtCore import Qt, QPoint
+import click
 from mcook import gmk
 import MainWindow
+
+# pylint: disable=ungrouped-imports
 try:
-    from typing import Final
+    from typing import Final    # new in Python 3.8
 except ImportError:
     from typing import Any
     Final = Any                 # type: ignore
 
 SCRIPT_DIR: Final = os.path.abspath(os.path.dirname(sys.argv[0]))
-
-parser = argparse.ArgumentParser(description="""
-
-Watch processes as they progress through file I/O operations.
-
-""")
-parser.add_argument('--ignore', '-i', action='append', default=[], help="""
-Comma-separated list of commands to ignore
-""")
-parser.add_argument('--debug', action='store_true')
-OPTS = parser.parse_args()
-del parser
-
-logging.basicConfig(level=logging.DEBUG if OPTS.debug else logging.INFO,
-                    format='%(name)s: %(levelname)s: %(message)s')
-LOGGER: Final = logging.getLogger('QtProgress')
-
-IGNORED_COMMANDS = set(','.join(OPTS.ignore).split(','))
-
-# ------------------------------------------------------------------------------
 
 Item: Final = QtWidgets.QTableWidgetItem
 
@@ -51,15 +34,17 @@ UPDATE_MSEC: Final = 2000
 # changed, delete it from the display.
 KEEP_COUNTDOWN: Final = 120
 
+IGNORED_COMMANDS: Set[str] = set()
+
 class File:
     def __init__(self, name: str, pos: int, size: int, timestamp: float) -> None:
         self.name = name
-        self.pos: Optional[int] = pos
+        self.pos: int | None = pos
         self.size = size
         self.first_pos = pos
         self.first_size = size
         self.first_timestamp = timestamp
-        self.table_row: Optional[int] = None
+        self.table_row: int | None = None
         self.keep_countdown = KEEP_COUNTDOWN
 
     def __str__(self) -> str:
@@ -97,14 +82,14 @@ def get_procs() -> Processes:
         try:
             fds = os.listdir(fddir)
         except OSError as exc:
-            LOGGER.debug('pid %s: skip %s', pid, exc)
+            logging.debug('pid %s: skip %s', pid, exc)
             continue
 
         try:
-            with open(pid + '/comm') as f:
+            with open(f'{pid}/comm', encoding='utf-8') as f:
                 command = f.read().rstrip('\n')
         except IOError as exc:
-            LOGGER.debug('pid %s: skip %s', pid, exc)
+            logging.debug('pid %s: skip %s', pid, exc)
             continue
 
         fdmap = {}
@@ -113,28 +98,28 @@ def get_procs() -> Processes:
                 fdfile = fddir + fd
                 st = os.stat(fdfile)
 
-                if not S_ISREG(st.st_mode) and not S_ISBLK(st.st_mode):
-                    # LOGGER.debug('pid %s, fd %s: not regular or block', pid, fd)
+                if not (S_ISREG(st.st_mode) or S_ISBLK(st.st_mode)):
+                    # logging.debug('pid %s, fd %s: not regular or block', pid, fd)
                     continue
 
                 name = os.readlink(fdfile)
-                LOGGER.debug('pid %s, fd %s: name %r', pid, fd, name)
+                logging.debug('pid %s, fd %s: name %r', pid, fd, name)
 
                 size = st.st_size
                 pos = 0
-                with open(pid + '/fdinfo/' + fd, 'rt') as f:
+                with open(f'{pid}/fdinfo/{fd}', encoding='utf-8') as f:
                     for line in f:
-                        LOGGER.debug('pid %s, fd %s: fdinfo: %r', pid, fd, line)
+                        logging.debug('pid %s, fd %s: fdinfo: %r', pid, fd, line)
                         if line.startswith('pos:'):
                             pos = int(line[4:])
                             break
-                LOGGER.debug('pid %s, fd %s: pos %s of %s', pid, fd, pos, size)
+                logging.debug('pid %s, fd %s: pos %s of %s', pid, fd, pos, size)
 
                 fdmap[int(fd), st.st_dev, st.st_ino] = \
                     File(name=name, pos=pos, size=size, timestamp=timestamp)
 
             except OSError as exc:
-                LOGGER.debug('pid %s, fd %s: skip: %s', pid, fd, exc)
+                logging.debug('pid %s, fd %s: skip: %s', pid, fd, exc)
 
         procs.append(Process(pid=int(pid), command=command, files=fdmap))
     return procs
@@ -149,7 +134,8 @@ def percentage(n: Optional[int], d: int) -> str:
         if n == 0:
             return '0%'
         return '?'
-    return '{0:.1f}%'.format(100.0 * n / d).replace('.0', '')
+    p = 100.0 * n / d
+    return f'{p:.1f}%'.replace('.0', '')
 
 # ------------------------------------------------------------------------------
 
@@ -231,28 +217,28 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
         row = item.row()
         column = item.column()
-        LOGGER.debug('at %s,%s', row, column)
+        logging.debug('at %s,%s', row, column)
 
         for it, proc_file in self.proc_files.items():
             if row == proc_file.table_row:
                 command = it[1]
                 break
         else:
-            LOGGER.error('No row %s', row)
+            print('No row', row, flush=True, file=sys.stderr)
             return
 
         menu = QtWidgets.QMenu()
         ignoreAction = menu.addAction(f'Ignore: {command}')
         action = menu.exec_(self.mainTable.mapToGlobal(position))
         if action == ignoreAction:
-            LOGGER.debug('Ignore: %r', command)
+            logging.debug('Ignore: %r', command)
             self.ignore_command(command)
         else:
-            LOGGER.debug('Other: %r', action)
+            logging.debug('Other: %r', action)
 
     def keyPressEvent(self, e: QtGui.QKeyEvent) -> None:
         key = e.key()
-        LOGGER.debug('keyPressEvent %s %r', key, e)
+        logging.debug('keyPressEvent %s %r', key, e)
 
         # If a table cell is selected, unselect it.
         if key == Qt.Key_Escape:
@@ -323,7 +309,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
                     more_bytes = proc_file.size - proc_file.pos
                     if more_bytes > 0:
                         s = int(more_bytes / bytes_per_sec)
-                        more_time = '{0:d}:{1:02d}'.format(s // 60, s % 60)
+                        more_time = f'{s // 60:d}:{s % 60:02d}'
 
         i = Item(rate)
         i.setTextAlignment(int(Qt.AlignCenter))
@@ -394,7 +380,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
                 continue
             if proc_file.pos is None:
                 continue
-            LOGGER.debug('closed: %s %s', it, proc_file)
+            logging.debug('closed: %s %s', it, proc_file)
             proc_file.pos = None
             pid, command, fd, dev, ino, _file_name = it
             self.update_row(pid, command, fd, proc_file)
@@ -409,10 +395,10 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
             if row is None:
                 continue
             proc_file.keep_countdown -= 1
-            LOGGER.debug('countdown %s, row %s, file %s',
-                         proc_file.keep_countdown,
-                         proc_file.table_row,
-                         proc_file.name)
+            logging.debug('countdown %s, row %s, file %s',
+                          proc_file.keep_countdown,
+                          proc_file.table_row,
+                          proc_file.name)
             if proc_file.keep_countdown > 0:
                 continue
             proc_file.table_row = None
@@ -443,14 +429,14 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         for col in range(tab.columnCount()):
             i = tab.item(row, col)
             if not i:
-                LOGGER.error('No cell at %s,%s', row, col)
+                print('No cell at', row, col, flush=True, file=sys.stderr)
                 continue
             i.setBackground(color)
 
     def tick(self) -> None:
-        LOGGER.debug('Tick...')
+        logging.debug('Tick...')
         self.update_table()
-        LOGGER.debug('Tick...done')
+        logging.debug('Tick...done')
 
     def hide_all_rows(self) -> None:
         """
@@ -494,7 +480,17 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
             but.setEnabled(False)
             but.setToolTip('')
 
-def main() -> None:
+@click.command()
+@click.option('--ignore', '-i', default=[], multiple=True,
+              help='Comma-separated list of commands to ignore')
+def main(ignore: Optional[Tuple[str]] = None) -> None:
+    """
+    Watch processes as they progress through file I/O operations.
+    """
+    global IGNORED_COMMANDS
+    if ignore:
+        IGNORED_COMMANDS = set(','.join(ignore).split(','))
+
     os.chdir('/proc')
 
     app = QtWidgets.QApplication(['QtProgress'])

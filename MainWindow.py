@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long disable=useless-object-inheritance disable=attribute-defined-outside-init disable=redefined-outer-name
 # -*- coding: utf-8 -*-
 
 # Form implementation generated from reading ui file 'MainWindow.ui'
@@ -145,20 +146,28 @@ class Ui_MainWindow(object):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "QtProgress"))
         item = self.mainTable.horizontalHeaderItem(0)
+        assert item
         item.setText(_translate("MainWindow", "When"))
         item = self.mainTable.horizontalHeaderItem(1)
+        assert item
         item.setText(_translate("MainWindow", "Pos%"))
         item = self.mainTable.horizontalHeaderItem(2)
+        assert item
         item.setText(_translate("MainWindow", "Position"))
         item = self.mainTable.horizontalHeaderItem(3)
+        assert item
         item.setText(_translate("MainWindow", "Size"))
         item = self.mainTable.horizontalHeaderItem(4)
+        assert item
         item.setText(_translate("MainWindow", "Rate"))
         item = self.mainTable.horizontalHeaderItem(5)
+        assert item
         item.setText(_translate("MainWindow", "Remaining"))
         item = self.mainTable.horizontalHeaderItem(6)
+        assert item
         item.setText(_translate("MainWindow", "Command"))
         item = self.mainTable.horizontalHeaderItem(7)
+        assert item
         item.setText(_translate("MainWindow", "File"))
         __sortingEnabled = self.mainTable.isSortingEnabled()
         self.mainTable.setSortingEnabled(False)
