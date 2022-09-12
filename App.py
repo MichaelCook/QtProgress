@@ -1,5 +1,5 @@
 # Copyright 2019 (c) Michael Cook <michael@waxrat.com>. All rights reserved.
-# pylint: disable=deprecated-typing-alias disable=consider-alternative-union-syntax
+# pylint: disable=deprecated-typing-alias disable=consider-alternative-union-syntax # until python 3.10
 import sys
 import os
 import logging
@@ -483,7 +483,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 @click.command()
 @click.option('--ignore', '-i', default=[], multiple=True,
               help='Comma-separated list of commands to ignore')
-def main(ignore: Optional[Tuple[str]] = None) -> None:
+def main(ignore: Tuple[str, ...]) -> None:
     """
     Watch processes as they progress through file I/O operations.
     """
@@ -499,4 +499,4 @@ def main(ignore: Optional[Tuple[str]] = None) -> None:
     _ui = ThisAppMainWindow()   # noqa: F841 local variable assigned to but never used
     sys.exit(app.exec_())
 
-main()
+main()                          # pylint: disable=no-value-for-parameter
