@@ -176,13 +176,3 @@ class Ui_MainWindow(object):
         self.pushButton_unignore.setText(_translate("MainWindow", "Unignore"))
         self.pushButton_quit.setText(_translate("MainWindow", "Quit"))
         self.pushButton_quit.setShortcut(_translate("MainWindow", "Ctrl+Q"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    MainWindow = QtWidgets.QMainWindow()
-    ui = Ui_MainWindow()
-    ui.setupUi(MainWindow)
-    MainWindow.show()
-    sys.exit(app.exec_())

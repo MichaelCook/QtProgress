@@ -1,5 +1,6 @@
 # Copyright 2019 (c) Michael Cook <michael@waxrat.com>. All rights reserved.
-# pylint: disable=deprecated-typing-alias disable=consider-alternative-union-syntax # until python 3.10
+# pylint: disable=consider-alternative-union-syntax # until python 3.10
+# pylint: disable=deprecated-typing-alias # until python 3.8 (kilo)
 import sys
 import os
 import logging
@@ -9,7 +10,7 @@ from stat import S_ISREG, S_ISBLK
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtCore import Qt, QPoint
 import click
-from mcook import gmk
+from engineering_notation import to_si
 import MainWindow
 
 # pylint: disable=ungrouped-imports
@@ -228,21 +229,24 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
             return
 
         menu = QtWidgets.QMenu()
-        ignoreAction = menu.addAction(f'Ignore: {command}')
-        action = menu.exec_(self.mainTable.mapToGlobal(position))
-        if action == ignoreAction:
+
+        def ignore_command() -> None:
             logging.debug('Ignore: %r', command)
             self.ignore_command(command)
-        else:
-            logging.debug('Other: %r', action)
+        menu.addAction(f'Ignore: {command}', ignore_command)
 
-    def keyPressEvent(self, e: QtGui.QKeyEvent) -> None:
-        key = e.key()
-        logging.debug('keyPressEvent %s %r', key, e)
+        menu.exec(self.mainTable.mapToGlobal(position))
+
+    def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
+        key = event.key()
+        mods = int(event.modifiers())
+        logging.debug('keyPressEvent %s %r %r', key, mods, event)
 
         # If a table cell is selected, unselect it.
-        if key == Qt.Key_Escape:
+        if (mods, key) == (Qt.NoModifier, Qt.Key_Escape):
             self.mainTable.setCurrentCell(-1, -1)
+        else:
+            logging.debug('unhandled key event %r %r', mods, key)
 
     def update_row(self, pid: int, command: str, fd: int, proc_file: File) -> None:
         now = time.time()
@@ -282,7 +286,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 
         # position
         i = Item('-' if closed or proc_file.pos is None
-                 else gmk(proc_file.pos))
+                 else to_si(proc_file.pos))
         i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
             i.setForeground(GREY)
@@ -290,7 +294,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         col += 1
 
         # size
-        i = Item(gmk(proc_file.size))
+        i = Item(to_si(proc_file.size))
         i.setTextAlignment(int(Qt.AlignCenter))
         if closed:
             i.setForeground(GREY)
@@ -305,7 +309,7 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
             if elapsed != 0:
                 bytes_per_sec = (proc_file.pos - proc_file.first_pos) / elapsed
                 if bytes_per_sec > 0:
-                    rate = gmk(bytes_per_sec) + 'B/s'
+                    rate = to_si(bytes_per_sec) + 'B/s'
                     more_bytes = proc_file.size - proc_file.pos
                     if more_bytes > 0:
                         s = int(more_bytes / bytes_per_sec)
@@ -412,7 +416,6 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
         self.last_hilite = hilite
 
         self.set_hide_button()
-        self.mainTable.setCurrentCell(-1, -1)
 
     def remove_row(self, row: int) -> None:
         self.mainTable.removeRow(row)
@@ -483,10 +486,16 @@ class ThisAppMainWindow(QtWidgets.QMainWindow, MainWindow.Ui_MainWindow):
 @click.command()
 @click.option('--ignore', '-i', default=[], multiple=True,
               help='Comma-separated list of commands to ignore')
-def main(ignore: Tuple[str, ...]) -> None:
+@click.option('--debug', is_flag=True)
+def main(ignore: Tuple[str, ...],
+         debug: bool) -> None:
     """
     Watch processes as they progress through file I/O operations.
     """
+
+    if debug:
+        logging.basicConfig(level=logging.DEBUG)
+
     global IGNORED_COMMANDS
     if ignore:
         IGNORED_COMMANDS = set(','.join(ignore).split(','))
@@ -494,9 +503,10 @@ def main(ignore: Tuple[str, ...]) -> None:
     os.chdir('/proc')
 
     app = QtWidgets.QApplication(['QtProgress'])
-    app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))  # type: ignore
+    app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
     app.setWindowIcon(QtGui.QIcon(os.path.join(SCRIPT_DIR, 'icon.png')))
     _ui = ThisAppMainWindow()   # noqa: F841 local variable assigned to but never used
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
-main()                          # pylint: disable=no-value-for-parameter
+if __name__ == '__main__':
+    main()                      # pylint: disable=no-value-for-parameter
