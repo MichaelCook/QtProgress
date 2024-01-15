@@ -493,8 +493,8 @@ def main(ignore: Tuple[str, ...],
     Watch processes as they progress through file I/O operations.
     """
 
-    if debug:
-        logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO,
+                        format=f'{os.path.basename(__file__)}: [%(levelname).1s] %(message)s')
 
     global IGNORED_COMMANDS
     if ignore:
